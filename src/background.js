@@ -1,19 +1,27 @@
 import * as hash from 'object-hash';
+import { isObjectEmpty } from './util';
+
+// chrome.action.onClicked.addListener((tab) => {
+//     const popup = open('./popup.html', `response-memorizer_${tab.id}`, 'menubar=0,innerWidth=900,innerHeight=800');
+// });
+let isManual = false;
 
 chrome.runtime.onMessage.addListener(
     (request, _sender, _sendResponse) => {
-        if (request.msg === 'start') start();
-        if (request.msg === 'clear') clear();
+        if (request.fun === 'start') start();
+        if (request.fun === 'clear') clear();
+        if (request.fun === 'manual') setMode(request.fun);
+        if (request.fun === 'auto') setMode(request.msg);
     }
 );
+
+function setMode(mode) {
+    isManual = mode === 'manual';
+}
 
 function clear() {
     console.log('Clear');
     chrome.storage.local.clear();
-}
-
-function isObjectEmpty(obj) {
-    return !(typeof obj == 'object' && Object.keys(obj).length === 0);
 }
 
 let debuggee;
@@ -46,13 +54,24 @@ function cacheResponse(request, response) {
 
 async function getCachedResponse(request) {
     let result = await chrome.storage.local.get([identifier(request)]);
+
     if (isObjectEmpty(result[identifier(request)])) {
         const params = (new URL(request.url)).searchParams;
         const url = params.get('url');
         result = await chrome.storage.local.get([identifier({ ...request, url })]);
     }
 
-    return Object.values(result)[0];
+    result = Object.values(result)[0];
+
+    if (isObjectEmpty(result)) {
+        const preselected = (await chrome.storage.local.get('preselected'))?.preselected;
+        if (preselected) {
+            result = await chrome.storage.local.get(preselected);
+            result = Object.values(result)[0];
+        }
+    }
+    console.log(result);
+    return result;
 }
 
 async function start() {
@@ -97,7 +116,6 @@ async function handleResponse(params) {
 }
 
 async function handleRequest(params) {
-    console.log(identifier(params.request));
     if (params.resourceType !== 'XHR' || ! (await isCached(params.request))) {
         await chrome.debugger.sendCommand(debuggee, 'Fetch.continueRequest', { requestId: params.requestId });
     } else {

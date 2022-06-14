@@ -1,13 +1,26 @@
 const path = require('path');
 
 module.exports = {
+    mode: 'development',
+    devtool: 'source-map',
     entry: {
-        background: './background.js',
-        popup: './popup.js'
+        background: path.resolve(__dirname, './src/background.js'),
+        popup: path.resolve(__dirname, './src/popup.js')
     },
     output: {
         filename: '[name].js',
         path: path.resolve(__dirname, 'dist')
     },
-    mode: 'production'
+    module: {
+        rules: [
+            {
+                test: /\.jsx?$/,
+                loader: require.resolve('babel-loader'),
+                exclude: [path.resolve(__dirname, './node_modules')]
+            }
+        ]
+    },
+    resolve: {
+        extensions: ['.jsx', '.js']
+    }
 };
