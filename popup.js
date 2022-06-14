@@ -1,56 +1,49 @@
 const button = document.getElementById("start");
 button.onclick = start;
 
-/*
-hash
-quick compare?
-*/
+const clearButton = document.getElementById("clear");
+clearButton.onclick = () => {
+    chrome.storage.local.clear();
+}
 
-const fulfilledResponses = new Map();
 let debuggee;
 
-function isCached(request) {
-    let params = (new URL(request.url)).searchParams;
-    let url = params.get('url');
-    for (const [key, value] of fulfilledResponses) {
-        if (key.url === url || key.url === request.url) {
-            if (key.method === request.method) {
-                if (_.isEqual(key.body, request.body)) {
-                    return true;
-                }
-            }
+function identifier(request) {
+    return JSON.stringify(
+        {
+            url: request.url,
+            method: request.method,
+            postData: request.postData
         }
-    }
+    );
+}
 
-    return false;
+async function isCached(request) {
+    return !_.isEmpty(await getCachedResponse(request));;
 }
 
 function cacheResponse(request, response) {
-    fulfilledResponses.set({
-        url: request.url,
-        method: request.method,
-        postData: request.postData
-    }, {
-        responseCode: response.responseStatusCode,
-        responseHeaders: response.responseHeaders,
-        body: response.body
-    });
-}
-
-function getCachedResponse(request) {
-    let params = (new URL(request.url)).searchParams;
-    let url = params.get('url');
-    for (const [key, value] of fulfilledResponses) {
-        if (key.url === url || key.url === request.url) {
-            if (key.method === request.method) {
-                if (_.isEqual(key.body, request.body)) {
-                    return value;
-                }
+    chrome.storage.local.set(
+        {
+            [identifier(request)]: {
+                responseCode: response.responseStatusCode,
+                responseHeaders: response.responseHeaders,
+                body: response.body
             }
         }
+    );
+}
+
+async function getCachedResponse(request) {
+    let result = await chrome.storage.local.get([identifier(request)]);
+    console.log(result[identifier(request)]);
+    if (_.isEmpty(result[identifier(request)])) {
+        let params = (new URL(request.url)).searchParams;
+        let url = params.get('url');
+        result = await chrome.storage.local.get([identifier({...request, url})]);
     }
 
-    return null;
+    return Object.values(result)[0];
 }
 
 async function start() {
@@ -80,8 +73,9 @@ function listener(source, method, params) {
 async function handleResponse(params) {
     if (params.resourceType !== 'XHR') {
         await chrome.debugger.sendCommand(debuggee, 'Fetch.continueResponse', { requestId: params.requestId });
-    } else if (isCached(params.request)) {
-        await chrome.debugger.sendCommand(debuggee, 'Fetch.fulfillRequest', { requestId: params.requestId,  ...getCachedResponse(params.request) });
+    } else if (await isCached(params.request)) {
+        const res = await getCachedResponse(params.request);
+        await chrome.debugger.sendCommand(debuggee, 'Fetch.fulfillRequest', { requestId: params.requestId,  ...res });
     }else {
         const responseBody = await chrome.debugger.sendCommand(debuggee, 'Fetch.getResponseBody', { requestId: params.requestId });
         cacheResponse(params.request, {
@@ -94,7 +88,7 @@ async function handleResponse(params) {
 }
 
 async function handleRequest(params) {
-    if (params.resourceType !== 'XHR' || !isCached(params.request)) {
+    if (params.resourceType !== 'XHR' || ! (await isCached(params.request))) {
         await chrome.debugger.sendCommand(debuggee, 'Fetch.continueRequest', { requestId: params.requestId });
     } else {
         const url = new URL(params.request.url)
