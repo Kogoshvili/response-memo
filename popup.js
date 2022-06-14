@@ -1,25 +1,28 @@
 const button = document.getElementById("start");
 button.onclick = start;
 
+/*
+hash
+quick compare?
+*/
+
 const fulfilledResponses = new Map();
 let debuggee;
 
-function inCached(request) {
+function isCached(request) {
+    let params = (new URL(request.url)).searchParams;
+    let url = params.get('url');
     for (const [key, value] of fulfilledResponses) {
-        if (key.url === request.url) {
+        if (key.url === url || key.url === request.url) {
             if (key.method === request.method) {
                 if (_.isEqual(key.body, request.body)) {
                     return true;
                 }
-
-                return false;
             }
-
-            return false;
         }
-
-        return false;
     }
+
+    return false;
 }
 
 function cacheResponse(request, response) {
@@ -35,21 +38,19 @@ function cacheResponse(request, response) {
 }
 
 function getCachedResponse(request) {
+    let params = (new URL(request.url)).searchParams;
+    let url = params.get('url');
     for (const [key, value] of fulfilledResponses) {
-        if (key.url === request.url) {
+        if (key.url === url || key.url === request.url) {
             if (key.method === request.method) {
                 if (_.isEqual(key.body, request.body)) {
                     return value;
                 }
-
-                continue;
             }
-
-            continue;
         }
-
-        continue;
     }
+
+    return null;
 }
 
 async function start() {
@@ -59,6 +60,7 @@ async function start() {
     await chrome.debugger.attach(debuggee, '1.1');
     console.log('Attached to debugger');
     await chrome.debugger.sendCommand(debuggee, 'Fetch.enable', { patterns: [{ requestStage: 'Request' }, { requestStage: 'Response' }] });
+    console.log('Fetch enabled');
 
     chrome.debugger.onEvent.addListener(listener);
 }
@@ -66,28 +68,36 @@ async function start() {
 function listener(source, method, params) {
     if (source.tabId == debuggee.tabId && method == 'Fetch.requestPaused') {
         if (params.responseErrorReason || params.responseStatusCode) {
-            console.log('Response')
-            handleResponse(params)
+            console.log('Response');
+            handleResponse(params);
         } else {
-            console.log('Request')
+            console.log('Request');
             handleRequest(params);
         }
     }
 }
 
 async function handleResponse(params) {
-    const responseBody = await chrome.debugger.sendCommand(debuggee, 'Fetch.getResponseBody', { requestId: params.requestId });
-    inCached(params.request) ? console.log('Cached') : cacheResponse(params.request, {
-        responseStatusCode: params.responseStatusCode,
-        responseHeaders: params.responseHeaders,
-        body: responseBody.body
-    });
+    if (params.resourceType !== 'XHR') {
+        await chrome.debugger.sendCommand(debuggee, 'Fetch.continueResponse', { requestId: params.requestId });
+    } else if (isCached(params.request)) {
+        await chrome.debugger.sendCommand(debuggee, 'Fetch.fulfillRequest', { requestId: params.requestId,  ...getCachedResponse(params.request) });
+    }else {
+        const responseBody = await chrome.debugger.sendCommand(debuggee, 'Fetch.getResponseBody', { requestId: params.requestId });
+        cacheResponse(params.request, {
+            responseStatusCode: params.responseStatusCode,
+            responseHeaders: params.responseHeaders,
+            body: responseBody.body
+        });
+        await chrome.debugger.sendCommand(debuggee, 'Fetch.fulfillRequest', { requestId: params.requestId, responseCode: params.responseStatusCode });
+    }
 }
 
 async function handleRequest(params) {
-    if (!inCached(params.request)) {
+    if (params.resourceType !== 'XHR' || !isCached(params.request)) {
         await chrome.debugger.sendCommand(debuggee, 'Fetch.continueRequest', { requestId: params.requestId });
     } else {
-        await chrome.debugger.sendCommand(debuggee, 'Fetch.fulfillRequest', { requestId: params.requestId,  ...getCachedResponse(params.request) });
+        const url = new URL(params.request.url)
+        await chrome.debugger.sendCommand(debuggee, 'Fetch.continueRequest', { requestId: params.requestId, url: `https://example.com/?url=${params.request.url}`});
     }
 }
