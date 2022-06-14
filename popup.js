@@ -1,8 +1,9 @@
-const button = document.getElementById("start");
+const button = document.getElementById('start');
 button.onclick = () => {
-    chrome.runtime.sendMessage({ msg: "start" });
-}
-const clearButton = document.getElementById("clear");
+    chrome.runtime.sendMessage({ msg: 'start' });
+};
+
+const clearButton = document.getElementById('clear');
 clearButton.onclick = () => {
-    chrome.runtime.sendMessage({ msg: "clear" });
-}
+    chrome.runtime.sendMessage({ msg: 'clear' });
+};

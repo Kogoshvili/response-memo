@@ -1,23 +1,25 @@
+import * as hash from 'object-hash';
+
 chrome.runtime.onMessage.addListener(
-  (request, sender, sendResponse) => {
-      if(request.msg == "start") start();
-      if(request.msg == "clear") clear();
-  }
+    (request, _sender, _sendResponse) => {
+        if (request.msg === 'start') start();
+        if (request.msg === 'clear') clear();
+    }
 );
 
 function clear() {
-  console.log('Clear');
-  chrome.storage.local.clear();
+    console.log('Clear');
+    chrome.storage.local.clear();
 }
 
 function isObjectEmpty(obj) {
-    return Object.keys(obj).length === 0;
+    return !(typeof obj == 'object' && Object.keys(obj).length === 0);
 }
 
 let debuggee;
 
 function identifier(request) {
-    return JSON.stringify(
+    return hash(
         {
             url: request.url,
             method: request.method,
@@ -27,7 +29,7 @@ function identifier(request) {
 }
 
 async function isCached(request) {
-    return !isObjectEmpty(await getCachedResponse(request));;
+    return !isObjectEmpty(await getCachedResponse(request));
 }
 
 function cacheResponse(request, response) {
@@ -44,18 +46,17 @@ function cacheResponse(request, response) {
 
 async function getCachedResponse(request) {
     let result = await chrome.storage.local.get([identifier(request)]);
-    console.log(result[identifier(request)]);
     if (isObjectEmpty(result[identifier(request)])) {
-        let params = (new URL(request.url)).searchParams;
-        let url = params.get('url');
-        result = await chrome.storage.local.get([identifier({...request, url})]);
+        const params = (new URL(request.url)).searchParams;
+        const url = params.get('url');
+        result = await chrome.storage.local.get([identifier({ ...request, url })]);
     }
 
     return Object.values(result)[0];
 }
 
 async function start() {
-    const tabs = await chrome.tabs.query({active: true, currentWindow: true});
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     debuggee = { tabId: tabs[0].id };
 
     await chrome.debugger.attach(debuggee, '1.1');
@@ -67,7 +68,7 @@ async function start() {
 }
 
 function listener(source, method, params) {
-    if (source.tabId == debuggee.tabId && method == 'Fetch.requestPaused') {
+    if (source.tabId === debuggee.tabId && method === 'Fetch.requestPaused') {
         if (params.responseErrorReason || params.responseStatusCode) {
             console.log('Response');
             handleResponse(params);
@@ -84,7 +85,7 @@ async function handleResponse(params) {
     } else if (await isCached(params.request)) {
         const res = await getCachedResponse(params.request);
         await chrome.debugger.sendCommand(debuggee, 'Fetch.fulfillRequest', { requestId: params.requestId,  ...res });
-    }else {
+    } else {
         const responseBody = await chrome.debugger.sendCommand(debuggee, 'Fetch.getResponseBody', { requestId: params.requestId });
         cacheResponse(params.request, {
             responseStatusCode: params.responseStatusCode,
@@ -96,10 +97,10 @@ async function handleResponse(params) {
 }
 
 async function handleRequest(params) {
+    console.log(identifier(params.request));
     if (params.resourceType !== 'XHR' || ! (await isCached(params.request))) {
         await chrome.debugger.sendCommand(debuggee, 'Fetch.continueRequest', { requestId: params.requestId });
     } else {
-        const url = new URL(params.request.url)
-        await chrome.debugger.sendCommand(debuggee, 'Fetch.continueRequest', { requestId: params.requestId, url: `https://example.com/?url=${params.request.url}`});
+        await chrome.debugger.sendCommand(debuggee, 'Fetch.continueRequest', { requestId: params.requestId, url: `https://example.com/?url=${params.request.url}` });
     }
 }
