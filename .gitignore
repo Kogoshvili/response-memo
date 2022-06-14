@@ -1,0 +1,4 @@
+node_modules
+dist/*
+!dist/popup.html
+!dist/manifest.json
