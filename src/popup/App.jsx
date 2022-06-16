@@ -1,38 +1,60 @@
 import React, { useEffect, useState } from 'react';
 import List from './components/List';
+import { Runtime, Storage, ResponsesStorage } from '../APIs';
 
 function App() {
     const [list, setList] = useState([]);
+    const [requestId, setRequestId] = useState(null);
+    const [isManual, setIsManual] = useState(false);
 
     useEffect(() => {
         (async () => {
-            const res = await chrome.storage.local.get();
-            setList(Object.keys(res));}
-        )();
-        chrome.storage.onChanged.addListener(async (_changes) => {
-            const res = await chrome.storage.local.get();
-            setList(Object.keys(res));
+            const data = await ResponsesStorage.getCached();
+            console.log(data);
+            const keys = Object.keys(data);
+            setList(keys);
+            const manual = await Storage.get('manual');
+            setIsManual(manual);
+        })();
+        Storage.addChangedListener(async (_changes) => {
+            const data = await Storage.get();
+            setList(data);
+        });
+        Runtime.addMessageListener(async (message) => {
+            if (message.requestId) {
+                setRequestId(message.requestId);
+            }
         });
     }, []);
 
+    useEffect(() => {
+        (async () => await Storage.set('manual', isManual))();
+    }, [isManual]);
+
     const onStartClick = () => {
-        chrome.runtime.sendMessage({ fun: 'start' });
+        Runtime.invokeFunction('start');
     };
 
     const onClearClick = () => {
-        chrome.runtime.sendMessage({ fun: 'clear' });
+        Runtime.invokeFunction('clear');
+    };
+
+    const onManualClick = () => {
+        setIsManual(!isManual);
     };
 
     const onClick = (index) => {
-        chrome.storage.local.set({ preselected: list[index] });
+        Runtime.invokeFunction('respond', [requestId, list[index]]);
     };
 
     return (
         <div className="App">
             <button onClick={onStartClick}>Start</button>
+            <button style={{ backgroundColor: isManual ? 'green' : 'gray' }} onClick={onManualClick}>Manual</button>
             <button onClick={onClearClick}>Clear Storage</button>
-            <p>Select Response That will be used for next request</p>
-            <List list={list} onClick={onClick} />
+            <div>Select Response That will be used for next request</div>
+            <div>{requestId}</div>
+            {/* <List list={list} onClick={onClick} /> */}
         </div>
     );
 }

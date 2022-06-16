@@ -1,0 +1,3 @@
+// chrome.action.onClicked.addListener((tab) => {
+//     const popup = open('./popup.html', `response-memorizer_${tab.id}`, 'menubar=0,innerWidth=900,innerHeight=800');
+// });

@@ -1,124 +1,119 @@
-import * as hash from 'object-hash';
-import { isObjectEmpty } from './util';
-
-// chrome.action.onClicked.addListener((tab) => {
-//     const popup = open('./popup.html', `response-memorizer_${tab.id}`, 'menubar=0,innerWidth=900,innerHeight=800');
-// });
-let isManual = false;
-
-chrome.runtime.onMessage.addListener(
-    (request, _sender, _sendResponse) => {
-        if (request.fun === 'start') start();
-        if (request.fun === 'clear') clear();
-        if (request.fun === 'manual') setMode(request.fun);
-        if (request.fun === 'auto') setMode(request.msg);
-    }
-);
-
-function setMode(mode) {
-    isManual = mode === 'manual';
-}
-
-function clear() {
-    console.log('Clear');
-    chrome.storage.local.clear();
-}
+import { Storage, Fetch, Debugger, ResponsesStorage, Runtime } from './APIs';
+import { isResponse } from './util';
 
 let debuggee;
 
-function identifier(request) {
-    return hash(
-        {
-            url: request.url,
-            method: request.method,
-            postData: request.postData
-        }
-    );
+async function getDebuggee() {
+    if (!debuggee) {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        debuggee = { tabId: tabs[0].id };
+    }
+
+    return debuggee;
 }
 
-async function isCached(request) {
-    return !isObjectEmpty(await getCachedResponse(request));
+async function manualMode(value) {
+    return await Storage.set('manual', !!value);
 }
 
-function cacheResponse(request, response) {
-    chrome.storage.local.set(
-        {
-            [identifier(request)]: {
-                responseCode: response.responseStatusCode,
-                responseHeaders: response.responseHeaders,
-                body: response.body
+Runtime.addMessageListener(
+    (request, _sender, _sendResponse) => {
+        if (request.type === 'function') {
+            switch (request.function) {
+            case 'start':
+                start();
+                break;
+            case 'stop':
+                stop();
+                break;
+            case 'clear':
+                clear();
+                break;
+            case 'respond':
+                respond(...request.args);
+                break;
+            default:
+                console.log('Unknown function');
+                break;
             }
         }
-    );
-}
-
-async function getCachedResponse(request) {
-    let result = await chrome.storage.local.get([identifier(request)]);
-
-    if (isObjectEmpty(result[identifier(request)])) {
-        const params = (new URL(request.url)).searchParams;
-        const url = params.get('url');
-        result = await chrome.storage.local.get([identifier({ ...request, url })]);
     }
+);
 
-    result = Object.values(result)[0];
-
-    if (isObjectEmpty(result)) {
-        const preselected = (await chrome.storage.local.get('preselected'))?.preselected;
-        if (preselected) {
-            result = await chrome.storage.local.get(preselected);
-            result = Object.values(result)[0];
-        }
-    }
-    console.log(result);
-    return result;
+async function initialize() {
+    const debuggee = await getDebuggee();
+    new Fetch(debuggee);
+    new Debugger(debuggee);
+    await manualMode(false);
 }
 
 async function start() {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    debuggee = { tabId: tabs[0].id };
-
-    await chrome.debugger.attach(debuggee, '1.1');
-    console.log('Attached to debugger');
-    await chrome.debugger.sendCommand(debuggee, 'Fetch.enable', { patterns: [{ requestStage: 'Request' }, { requestStage: 'Response' }] });
+    await initialize();
+    const debuggee = await getDebuggee();
+    await Debugger.attach(debuggee);
+    console.log('Debugger to attached');
+    await Fetch.enable({ patterns: [{ requestStage: 'Request' }, { requestStage: 'Response' }] });
     console.log('Fetch enabled');
-
-    chrome.debugger.onEvent.addListener(listener);
+    Debugger.addEventListener(listener);
+    console.log('Listener added');
 }
 
-function listener(source, method, params) {
-    if (source.tabId === debuggee.tabId && method === 'Fetch.requestPaused') {
-        if (params.responseErrorReason || params.responseStatusCode) {
-            console.log('Response');
-            handleResponse(params);
-        } else {
-            console.log('Request');
-            handleRequest(params);
-        }
+async function stop() {
+    await Debugger.detach();
+    console.log('Debugger from detached');
+    await Fetch.disable();
+    console.log('Fetch disabled');
+}
+
+async function clear() {
+    await Storage.clear();
+    console.log('Cleared');
+}
+
+function listener(params) {
+    if (isResponse(params)) {
+        console.log('Response');
+        handleResponse(params);
+    } else {
+        console.log('Request');
+        handleRequest(params);
     }
 }
 
 async function handleResponse(params) {
-    if (params.resourceType !== 'XHR') {
-        await chrome.debugger.sendCommand(debuggee, 'Fetch.continueResponse', { requestId: params.requestId });
-    } else if (await isCached(params.request)) {
-        const res = await getCachedResponse(params.request);
-        await chrome.debugger.sendCommand(debuggee, 'Fetch.fulfillRequest', { requestId: params.requestId,  ...res });
+    await Runtime.sendMessage({ requestId: params.requestId });
+    const isCached = await ResponsesStorage.isCached(params.request);
+    if (isCached) {
+        const response = await ResponsesStorage.getCached(params.request);
+        await Fetch.fulfillRequest(params.requestId, response);
     } else {
-        const responseBody = await chrome.debugger.sendCommand(debuggee, 'Fetch.getResponseBody', { requestId: params.requestId });
-        cacheResponse(params.request, {
-            responseStatusCode: params.responseStatusCode,
-            responseHeaders: params.responseHeaders,
-            body: responseBody.body
-        });
-        await chrome.debugger.sendCommand(debuggee, 'Fetch.fulfillRequest', { requestId: params.requestId, responseCode: params.responseStatusCode });
+        const manual = await isManual();
+        if (!manual) { // if manual respond function will be manually called to fulfill request
+            const responseBody = await Fetch.getResponseBody(params.requestId);
+            ResponsesStorage.cache(params.request, {
+                responseStatusCode: params.responseStatusCode,
+                responseHeaders: params.responseHeaders,
+                body: responseBody.body
+            });
+            await Fetch.continueResponse(params.requestId);
+        }
     }
 }
 
 async function handleRequest(params) {
-    if (params.resourceType !== 'XHR' || ! (await isCached(params.request))) {
-        await chrome.debugger.sendCommand(debuggee, 'Fetch.continueRequest', { requestId: params.requestId });
+    const isCached = await ResponsesStorage.isCached(params.request);
+    if (isCached) {
+        await Fetch.continueRequest(params.requestId, { url: `https://example.com/?url=${params.request.url}` });
     } else {
-        await chrome.debugger.sendCommand(debuggee, 'Fetch.continueRequest', { requestId: params.requestId, url: `https://example.com/?url=${params.request.url}` });
+        await Fetch.continueRequest(params.requestId);
     }
+}
+
+async function respond(requestId, responseId) {
+    const response = await Storage.get(responseId);
+    await Fetch.fulfillRequest(requestId, response);
+}
+
+async function isManual() {
+    return await Storage.get('manual');
 }
