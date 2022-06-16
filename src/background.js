@@ -2,18 +2,17 @@ import { Storage, Fetch, Debugger, ResponsesStorage, Runtime } from './APIs';
 import { isResponse } from './util';
 
 let debuggee;
+let fetch;
+let debug;
 
 async function getDebuggee() {
-    if (!debuggee) {
-        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-        debuggee = { tabId: tabs[0].id };
-    }
-
-    return debuggee;
+    if (debuggee) return debuggee;
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    return { tabId: tabs[0].id };
 }
 
 async function manualMode(value) {
-    return await Storage.set('manual', !!value);
+    return await Storage.set('manual', value);
 }
 
 Runtime.addMessageListener(
@@ -41,27 +40,28 @@ Runtime.addMessageListener(
 );
 
 async function initialize() {
-    const debuggee = await getDebuggee();
-    new Fetch(debuggee);
-    new Debugger(debuggee);
+    debuggee = await getDebuggee();
+    fetch = new Fetch(debuggee);
+    debug = new Debugger(debuggee);
     await manualMode(false);
+    console.log('Initialized');
 }
 
 async function start() {
     await initialize();
     const debuggee = await getDebuggee();
-    await Debugger.attach(debuggee);
+    await debug.attach(debuggee);
     console.log('Debugger to attached');
-    await Fetch.enable({ patterns: [{ requestStage: 'Request' }, { requestStage: 'Response' }] });
+    await fetch.enable({ patterns: [{ requestStage: 'Request' }, { requestStage: 'Response' }] });
     console.log('Fetch enabled');
-    Debugger.addEventListener(listener);
+    debug.addEventListener(listener);
     console.log('Listener added');
 }
 
 async function stop() {
-    await Debugger.detach();
+    await debug.detach();
     console.log('Debugger from detached');
-    await Fetch.disable();
+    await fetch.disable();
     console.log('Fetch disabled');
 }
 
@@ -82,20 +82,23 @@ function listener(params) {
 
 async function handleResponse(params) {
     await Runtime.sendMessage({ requestId: params.requestId });
-    const isCached = await ResponsesStorage.isCached(params.request);
-    if (isCached) {
-        const response = await ResponsesStorage.getCached(params.request);
-        await Fetch.fulfillRequest(params.requestId, response);
-    } else {
-        const manual = await isManual();
-        if (!manual) { // if manual respond function will be manually called to fulfill request
-            const responseBody = await Fetch.getResponseBody(params.requestId);
-            ResponsesStorage.cache(params.request, {
-                responseStatusCode: params.responseStatusCode,
-                responseHeaders: params.responseHeaders,
-                body: responseBody.body
-            });
-            await Fetch.continueResponse(params.requestId);
+    const manual = await isManual();
+    if (!manual) { // if manual respond function will be manually called to fulfill request
+        const isCached = await ResponsesStorage.isCached(params.request);
+        if (isCached) {
+            const response = await ResponsesStorage.getCached(params.request);
+            console.log('chached', response, params.requestId);
+            await fetch.fulfillRequest(params.requestId, response);
+        } else {
+            const responseBody = await fetch.getResponseBody(params.requestId);
+            console.log('chace response', params.requestId);
+            await ResponsesStorage.cache(
+                params.request,
+                params.responseStatusCode,
+                params.responseHeaders,
+                responseBody.body
+            );
+            await fetch.continueResponse(params.requestId);
         }
     }
 }
@@ -103,17 +106,19 @@ async function handleResponse(params) {
 async function handleRequest(params) {
     const isCached = await ResponsesStorage.isCached(params.request);
     if (isCached) {
-        await Fetch.continueRequest(params.requestId, { url: `https://example.com/?url=${params.request.url}` });
+        console.log('Cached REQUEST', params.requestId);
+        await fetch.continueRequest(params.requestId, { url: `https://example.com/?url=${params.request.url}` });
     } else {
-        await Fetch.continueRequest(params.requestId);
+        await fetch.continueRequest(params.requestId);
     }
 }
 
 async function respond(requestId, responseId) {
-    const response = await Storage.get(responseId);
-    await Fetch.fulfillRequest(requestId, response);
+    const response = await ResponsesStorage.getById(responseId);
+    await fetch.fulfillRequest(requestId, response);
 }
 
 async function isManual() {
-    return await Storage.get('manual');
+    const state = await Storage.get('manual');
+    return state['manual'];
 }

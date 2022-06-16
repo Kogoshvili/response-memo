@@ -11,8 +11,8 @@ class Fetch {
         return await chrome.debugger.sendCommand(this.debuggee, 'Fetch.disable');
     }
 
-    async continueResponse(requestId) {
-        return await chrome.debugger.sendCommand(this.debuggee, 'Fetch.continueResponse', { requestId });
+    async continueResponse(requestId, params = {}) {
+        return await chrome.debugger.sendCommand(this.debuggee, 'Fetch.continueResponse', { requestId, ...params });
     }
 
     async fulfillRequest(requestId, response) {

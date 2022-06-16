@@ -2,7 +2,7 @@ const path = require('path');
 
 module.exports = {
     mode: 'development',
-    devtool: 'source-map',
+    devtool: 'inline-source-map',
     entry: {
         background: path.resolve(__dirname, './src/background.js'),
         popup: path.resolve(__dirname, './src/popup.js')
@@ -17,6 +17,21 @@ module.exports = {
                 test: /\.jsx?$/,
                 loader: require.resolve('babel-loader'),
                 exclude: [path.resolve(__dirname, './node_modules')]
+            },
+            {
+                test: /\.css$/,
+                use: [
+                    'style-loader',
+                    'css-loader'
+                ]
+            },
+            {
+                test: /\.scss$/,
+                use: [
+                    'style-loader',
+                    'css-loader',
+                    'sass-loader'
+                ]
             }
         ]
     },

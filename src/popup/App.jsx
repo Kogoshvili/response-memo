@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import List from './components/List';
 import { Runtime, Storage, ResponsesStorage } from '../APIs';
+import './App.scss';
 
 function App() {
     const [list, setList] = useState([]);
@@ -10,20 +11,24 @@ function App() {
     useEffect(() => {
         (async () => {
             const data = await ResponsesStorage.getCached();
-            console.log(data);
-            const keys = Object.keys(data);
-            setList(keys);
+            if (data) {
+                const keys = Object.keys(data);
+                setList(keys);
+            }
             const manual = await Storage.get('manual');
-            setIsManual(manual);
+            setIsManual(manual['manual']);
         })();
-        Storage.addChangedListener(async (_changes) => {
-            const data = await Storage.get();
-            setList(data);
+        Storage.addChangedListener(async (changes) => {
+            if (changes) {
+                const data = await ResponsesStorage.getCached();
+                if (data) {
+                    const keys = Object.keys(data);
+                    setList(keys);
+                }
+            }
         });
         Runtime.addMessageListener(async (message) => {
-            if (message.requestId) {
-                setRequestId(message.requestId);
-            }
+            if (message.requestId) setRequestId(message.requestId);
         });
     }, []);
 
@@ -50,11 +55,15 @@ function App() {
     return (
         <div className="App">
             <button onClick={onStartClick}>Start</button>
-            <button style={{ backgroundColor: isManual ? 'green' : 'gray' }} onClick={onManualClick}>Manual</button>
+            <button className={isManual ? 'enabled' : 'disabled'} onClick={onManualClick}>Manual</button>
             <button onClick={onClearClick}>Clear Storage</button>
-            <div>Select Response That will be used for next request</div>
-            <div>{requestId}</div>
-            {/* <List list={list} onClick={onClick} /> */}
+            {
+                isManual &&
+                    <div>
+                        <div>Select Response for {requestId}:</div>
+                        <List list={list} onClick={onClick} />
+                    </div>
+            }
         </div>
     );
 }

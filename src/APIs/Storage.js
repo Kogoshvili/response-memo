@@ -1,7 +1,6 @@
 class Storage {
     static async get(id = null) {
-        const data = await chrome.storage.local.get(id);
-        return Object.values(data).length === 1 ? data[id] : data;
+        return await chrome.storage.local.get(id);
     }
 
     static async set(id, data) {
