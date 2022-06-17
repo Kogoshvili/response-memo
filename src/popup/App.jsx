@@ -12,8 +12,9 @@ function App() {
         (async () => {
             const data = await ResponsesStorage.getCached();
             if (data) {
-                const keys = Object.keys(data);
-                setList(keys);
+                setList(Object.keys(data));
+            } else {
+                setList([]);
             }
             const manual = await Storage.get('manual');
             setIsManual(manual['manual']);
@@ -32,10 +33,6 @@ function App() {
         });
     }, []);
 
-    useEffect(() => {
-        (async () => await Storage.set('manual', isManual))();
-    }, [isManual]);
-
     const onStartClick = () => {
         Runtime.invokeFunction('start');
     };
@@ -44,7 +41,8 @@ function App() {
         Runtime.invokeFunction('clear');
     };
 
-    const onManualClick = () => {
+    const onManualClick = async () => {
+        await Storage.set('manual', !isManual);
         setIsManual(!isManual);
     };
 
@@ -57,13 +55,11 @@ function App() {
             <button onClick={onStartClick}>Start</button>
             <button className={isManual ? 'enabled' : 'disabled'} onClick={onManualClick}>Manual</button>
             <button onClick={onClearClick}>Clear Storage</button>
-            {
-                isManual &&
-                    <div>
-                        <div>Select Response for {requestId}:</div>
-                        <List list={list} onClick={onClick} />
-                    </div>
-            }
+            <hr style={{ marginTop: '1em' }}/>
+            <div>
+                { isManual && <div>Select Response for {requestId}:</div> }
+                <List active={isManual} list={list} onClick={onClick} />
+            </div>
         </div>
     );
 }

@@ -19,13 +19,6 @@ module.exports = {
                 exclude: [path.resolve(__dirname, './node_modules')]
             },
             {
-                test: /\.css$/,
-                use: [
-                    'style-loader',
-                    'css-loader'
-                ]
-            },
-            {
                 test: /\.scss$/,
                 use: [
                     'style-loader',
@@ -36,6 +29,6 @@ module.exports = {
         ]
     },
     resolve: {
-        extensions: ['.jsx', '.js']
+        extensions: ['.jsx', '.js', '.scss']
     }
 };

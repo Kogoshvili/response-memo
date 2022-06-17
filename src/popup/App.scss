@@ -11,12 +11,17 @@
 
 ul {
     padding: 0;
+
+    &.active {
+        li {
+            cursor: pointer;
+            &:hover {
+                background-color: lawngreen;
+            }
+        }
+    }
+
     li {
         list-style: none;
-
-        cursor: pointer;
-        &:hover {
-            background-color: lawngreen;
-        }
     }
 }
