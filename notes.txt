@@ -1,0 +1,7 @@
+// chrome.action.onClicked.addListener((tab) => {
+//     const popup = open('./popup.html', `response-memorizer_${tab.id}`, 'menubar=0,innerWidth=900,innerHeight=800');
+// });
+
+False alarms?
+background.js:2 Uncaught (in promise) Error: {"code":-32602,"message":"Invalid InterceptionId."}
+Uncaught (in promise) Error: {"code":-32000,"message":"Invalid state for continueInterceptedRequest"}

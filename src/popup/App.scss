@@ -1,0 +1,27 @@
+.App {
+    min-width: 300px;
+}
+.enabled {
+    background-color: green;
+}
+
+.disabled {
+    background-color: gray;
+}
+
+ul {
+    padding: 0;
+
+    &.active {
+        li {
+            cursor: pointer;
+            &:hover {
+                background-color: lawngreen;
+            }
+        }
+    }
+
+    li {
+        list-style: none;
+    }
+}
