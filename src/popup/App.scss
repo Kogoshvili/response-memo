@@ -1,5 +1,11 @@
 .App {
-    min-width: 300px;
+    padding: 20px 10px;
+    min-width: 500px;
+
+    &-button-wrapper {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+    }
 }
 .enabled {
     background-color: green;

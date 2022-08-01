@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import List from './components/List';
 import { Runtime, Storage, ResponsesStorage } from '../APIs';
 import './App.scss';
+import Button from './components/Button';
 
 function App() {
     const [list, setList] = useState([]);
@@ -52,9 +53,11 @@ function App() {
 
     return (
         <div className="App">
-            <button onClick={onStartClick}>Start</button>
-            <button className={isManual ? 'enabled' : 'disabled'} onClick={onManualClick}>Manual</button>
-            <button onClick={onClearClick}>Clear Storage</button>
+            <div className="App-button-wrapper">
+                <Button onClick={onStartClick}>Start</Button>
+                <Button type={isManual ? 'success' : 'secondary'} onClick={onManualClick}>Manual Mode</Button>
+                <Button type="danger" onClick={onClearClick}>Clear Storage</Button>
+            </div>
             <hr style={{ marginTop: '1em' }}/>
             <div>
                 { isManual && <div>Select Response for {requestId}:</div> }
